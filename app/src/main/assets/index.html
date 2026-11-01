@@ -1,1 +1,54 @@
-
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Duty Management</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px Arial;background:#f2f4f7;color:#172033}
+header{background:#17365d;color:white;padding:15px;font-size:20px;font-weight:bold}
+nav{display:flex;background:#fff;position:sticky;top:0;z-index:5}nav button{flex:1;border:0;padding:13px 4px;background:#e8edf4;font-weight:bold}
+nav button.active{background:#17365d;color:white}.sub{display:flex;gap:6px;padding:10px;overflow:auto}
+button{border:0;border-radius:8px;padding:9px 12px;background:#dce6f1;color:#17365d;font-weight:bold}
+.sub button.active,.primary{background:#1769aa;color:white}.page{padding:10px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input{padding:10px;border:1px solid #bcc7d3;border-radius:8px;min-width:0;flex:1}
+.panel{background:white;border-radius:10px;padding:12px;margin:8px 0;box-shadow:0 1px 4px #0001}
+.board{display:grid;grid-template-columns:repeat(2,minmax(145px,1fr));gap:9px}
+.box{background:white;border:1px solid #cbd5e1;border-radius:10px;padding:9px;min-height:100px}
+.box h3{margin:0 0 8px;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.person{display:flex;align-items:center;gap:6px;margin:5px 0}
+.serial{width:20px;text-align:right;color:#65758b;font-size:12px}
+.bubble{flex:1;border-radius:20px;background:#e8f1fb;padding:8px 10px;text-align:center;border:1px solid #b8cde3}
+.bubble.selected{background:#17365d;color:white}.bubble small{display:block;font-size:10px;opacity:.8}
+.stats{display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid #e6eaf0}
+.muted{color:#65758b;font-size:12px}.danger{background:#fee2e2;color:#991b1b}
+select{padding:8px;border-radius:8px;border:1px solid #ccd}
+@media(max-width:360px){.board{grid-template-columns:1fr}}
+</style></head><body>
+<header>Duty Management</header>
+<nav><button id="navPersonnel" class="active" onclick="tab('personnel')">Personnel</button><button id="navBoard" onclick="tab('board')">Duty Board</button><button id="navState" onclick="tab('state')">State</button></nav>
+<div class="sub" id="shifts"></div><main id="app" class="page"></main>
+<script>
+const sample=`Ali,Ahmed,Usman,Bilal,Hamza,Hassan,Hussain,Umar,Abdullah,Saad,Zain,Ahsan,Fahad,Imran,Asad,Waqas,Akram,Noman,Salman,Kashif,Danish,Shahzaib,Rizwan,Tariq,Faisal,Sajid,Arslan,Adnan,Kamran,Junaid,Irfan,Naveed,Shahid,Awais,Muneeb,Talha,Moiz,Farhan,Zubair,Yasir,Rameez,Sohail,Adeel,Mubashir,Rashid,Waqar,Shan,Azhar,Naeem,Babar`.split(',');
+const defaults=['Duty','Off',"Att'C'",'Absent','Leave','Draft','Attachment'];
+let data=JSON.parse(localStorage.getItem('dutyAppData')||'null')||{people:sample.map((name,i)=>({name,rank:i})),boxes:{Morning:{Duty:['Ali','Ahmed','Usman'],Off:['Bilal'],"Att'C'":['Hamza'],Absent:[],Leave:[],Draft:[],Attachment:[]},Normal:{Duty:['Ali','Ahmed'],Off:['Usman'],"Att'C'":[],Absent:[],Leave:[],Draft:[],Attachment:[]},Evening:{Duty:['Ali'],Off:[],"Att'C'":[],Absent:[],Leave:[],Draft:[],Attachment:[]}}};
+let currentTab='personnel',shift='Morning',selected=null;
+function save(){localStorage.setItem('dutyAppData',JSON.stringify(data))}
+function tab(t){currentTab=t;selected=null;['Personnel','Board','State'].forEach(x=>document.getElementById('nav'+x).classList.toggle('active',t===x.toLowerCase()));render()}
+function ensure(){if(!data.boxes[shift])data.boxes[shift]={};}
+function shifts(){document.getElementById('shifts').innerHTML=currentTab==='personnel'?'':Object.keys(data.boxes).map(s=>`<button class="${s===shift?'active':''}" onclick="shift='${s.replaceAll("'","\\'")}';render()">${s}</button>`).join('')}
+function render(){shifts();const a=document.getElementById('app');if(currentTab==='personnel'){a.innerHTML=`<div class="panel"><b>Personnel Master List</b><p class="muted">Order is seniority order. Use arrows to change it.</p><div class="row"><input id="newName" placeholder="Enter personnel name"><button class="primary" onclick="addPerson()">Add</button></div></div>`+data.people.map((p,i)=>`<div class="panel row"><b style="width:24px">${i+1}.</b><span style="flex:1">${esc(p.name)}</span><button onclick="movePerson(${i},-1)">↑</button><button onclick="movePerson(${i},1)">↓</button><button onclick="renamePerson(${i})">Edit</button><button class="danger" onclick="deletePerson(${i})">×</button></div>`).join('')}
+else if(currentTab==='board'){ensure();let boxes=data.boxes[shift];a.innerHTML=`<div class="row" style="margin-bottom:10px"><input id="boxName" placeholder="New box name"><button class="primary" onclick="addBox()">Add Box</button></div><div class="muted">Tap a person, then tap a destination box to move them.</div><div class="board" id="board">${Object.entries(boxes).map(([name,names])=>`<section class="box" onclick="destination('${attr(name)}')"><h3>${esc(name)} <span><button onclick="event.stopPropagation();renameBox('${attr(name)}')">✎</button><button class="danger" onclick="event.stopPropagation();deleteBox('${attr(name)}')">×</button></span></h3>${names.slice().sort((x,y)=>rank(x)-rank(y)).map((n,i)=>`<div class="person"><span class="serial">${i+1}.</span><button class="bubble ${selected&&selected.name===n&&selected.from===name?'selected':''}" onclick="event.stopPropagation();selectPerson('${attr(n)}','${attr(name)}')">${esc(n)}</button></div>`).join('')}</section>`).join('')}</div>`}
+else {ensure();let all=Object.values(data.boxes).flatMap(b=>Object.values(b).flat());let unique=[...new Set(all)];let assigned=new Set(unique);let total=data.people.length;let present=0,away=0;let html=`<div class="panel"><div class="stats"><b>Total</b><b>${total}</b></div><div class="stats"><b>Present (Duty + Off)</b><b>${countCats(['Duty','Off'])}</b></div><div class="stats"><b>Away</b><b>${total-countCats(['Duty','Off'])}</b></div></div>`;for(const [s,boxes] of Object.entries(data.boxes)){html+=`<div class="panel"><b>${esc(s)}</b>`;for(const [b,n] of Object.entries(boxes))html+=`<div class="stats"><span>${esc(b)}</span><b>${n.length}</b></div>`;html+='</div>'}html+=`<div class="panel"><div class="stats"><b>Unassigned</b><b>${data.people.filter(p=>!assigned.has(p.name)).length}</b></div></div>`;a.innerHTML=html}}
+function rank(n){let p=data.people.find(x=>x.name===n);return p?p.rank:9999}
+function countCats(cats){let n=0;for(let boxes of Object.values(data.boxes))for(let [b,list] of Object.entries(boxes))if(cats.includes(b))n+=list.length;return n}
+function addPerson(){let v=document.getElementById('newName').value.trim();if(!v)return;if(data.people.some(p=>p.name.toLowerCase()===v.toLowerCase()))return alert('Name already exists');data.people.push({name:v,rank:data.people.length});save();render()}
+function movePerson(i,d){let j=i+d;if(j<0||j>=data.people.length)return;[data.people[i],data.people[j]]=[data.people[j],data.people[i]];data.people.forEach((p,k)=>p.rank=k);save();render()}
+function renamePerson(i){let v=prompt('New name',data.people[i].name);if(!v||!v.trim())return;let old=data.people[i].name;data.people[i].name=v.trim();for(let boxes of Object.values(data.boxes))for(let list of Object.values(boxes)){let k=list.indexOf(old);if(k>=0)list[k]=v.trim()}save();render()}
+function deletePerson(i){let n=data.people[i].name;if(!confirm('Delete '+n+'?'))return;data.people.splice(i,1);for(let boxes of Object.values(data.boxes))for(let list of Object.values(boxes))list.splice(list.indexOf(n),1);data.people.forEach((p,k)=>p.rank=k);save();render()}
+function addBox(){let v=document.getElementById('boxName').value.trim();if(!v)return;if(data.boxes[shift][v])return alert('Box already exists');data.boxes[shift][v]=[];save();render()}
+function renameBox(old){let v=prompt('New box name',old);if(!v||!v.trim()||data.boxes[shift][v])return;data.boxes[shift][v]=data.boxes[shift][old];delete data.boxes[shift][old];save();render()}
+function deleteBox(n){if(!confirm('Delete box? People will become unassigned.'))return;delete data.boxes[shift][n];save();render()}
+function selectPerson(n,from){selected={name:n,from};render()}
+function destination(to){if(!selected)return;let src=data.boxes[shift][selected.from];src.splice(src.indexOf(selected.name),1);data.boxes[shift][to].push(selected.name);selected=null;save();render()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function attr(s){return esc(s)}
+render();
+</script></body></html>
